@@ -93,7 +93,7 @@ module Discord =
             commandsString <- commandsString + "**Комманды барда**\n"
             for command in Bard.commands do
               commandsString <- commandsString + sprintf "**%s**::\t\t %s\n---\n" command.command command.desc
-            commandsString <- commandsString + "**Комманды системы**\n"
+            commandsString <- commandsString + "---\n**Комманды системы**\n"
             for command in commandsSystem do
               commandsString <- commandsString + sprintf "**%s**::\t\t %s\n---\n" command.command command.desc
             Utils.sendEmbed sm <| Utils.answerEmbed "Help" (commandsString.Substring(0, commandsString.Length - 4))
