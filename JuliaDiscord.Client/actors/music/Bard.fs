@@ -27,6 +27,7 @@ open FSharp.UMX
 
 open JuliaDiscord.Core
 open Discord.Audio
+open Discord.Audio
 
 module Bard =
 
@@ -116,21 +117,36 @@ module Bard =
         Error BardErrros.UserNoInVoiceChannel
     | _ -> Error BardErrros.IsNoGuildMessage
     
-  let private connectChannel (user: SocketGuildUser) (botGuild: SocketGuild) (ctx: BardContext<_,_>) =
+  let private connectChannel
+    (botGuild: SocketGuild) (ctx: BardContext<_,_>)
+    (gmc: GuildMessageContext) (user: SocketGuildUser)=
     
     let connect() =
-      user.VoiceChannel.ConnectAsync().Result
+      Ok <| user.VoiceChannel.ConnectAsync().Result
 
-    match botGuild.CurrentUser.VoiceChannel with
-    | null -> connect()
-    | channel when channel = user.VoiceChannel ->
-      match ctx.State.PlayerState with
-      | PlayerState.Playing _ | PlayerState.Loop _ ->
-        match ctx.State.AudioClient with
-        | Some client -> client
-        | None        -> connect()
-      | PlayerState.WaitSong | PlayerState.StopPlaying _ -> connect()
-    | _ -> connect()
+    let rec recConnect tryCount =
+      try
+        match botGuild.CurrentUser.VoiceChannel with
+        | null -> connect()
+        | channel when channel = user.VoiceChannel ->
+          match ctx.State.PlayerState with
+          | PlayerState.Playing _ | PlayerState.Loop _ ->
+            match ctx.State.AudioClient with
+            | Some client -> Ok client
+            | None        -> connect()
+          | PlayerState.WaitSong | PlayerState.StopPlaying _ -> connect()
+        | _ -> connect()
+      with ex ->
+        let err = sprintf "Failed get AudioClient: %s try counts: %d" ex.Message tryCount
+        Utils.sendEmbed gmc <| Utils.answerEmbed "Connect" err
+        if tryCount <= 3 then
+          Utils.sendEmbed gmc <| Utils.answerEmbed "Connect" "Try again..."
+          recConnect (tryCount + 1)
+        else
+          Error BardErrros.CantGetAudioClientWhenTryConnect
+        
+    
+    recConnect 0
 
   let private translateStream
     (youtubeDL: Process)    (ffmpeg: Process)
@@ -166,21 +182,33 @@ module Bard =
   }
 
   let private startPlaySong song (ctx: BardContext<_, _>) (gmc: GuildMessageContext) =
-    match validateChannel gmc with
-    | Ok user ->
-      let client = connectChannel user ctx.Proxy.Guild ctx
-      let ffmpeg = createFFmpegProcess()
-      Thread.Sleep(5000)
-      let ytdl = createYoutubeDLProcess song.Url
-      Utils.sendEmbed gmc <| Utils.answerWithThumbnailEmbed Play $"Начинается воспроизведение:\n{song.Title}" %song.Thumbnail
-      let bp =
-        let s = { FFmpeg = ffmpeg; YoutubeDL = ytdl; Song = song }
-        match ctx.State.PlayerState with
-        | PlayerState.Loop b -> PlayerState.Loop s
-        | _ -> PlayerState.Playing s
-      let newState = { ctx.State with PlayerState = bp; AudioClient = Some client }
-      translateStream ytdl ffmpeg ctx gmc client song |> ignore
-      newState
+
+    let prepareToTranslate (client: IAudioClient) =
+
+        let ffmpeg = createFFmpegProcess()
+
+        Async.Sleep(5000) |> Async.RunSynchronously
+
+        let ytdl = createYoutubeDLProcess song.Url
+
+        Utils.sendEmbed gmc
+        <| Utils.answerWithThumbnailEmbed Play $"Начинается воспроизведение:\n{song.Title}" %song.Thumbnail
+
+        let bp =
+          let s = { FFmpeg = ffmpeg; YoutubeDL = ytdl; Song = song }
+          match ctx.State.PlayerState with
+          | PlayerState.Loop b -> PlayerState.Loop s
+          | _ -> PlayerState.Playing s
+
+        let newState = { ctx.State with PlayerState = bp; AudioClient = Some client }
+        translateStream ytdl ffmpeg ctx gmc client song |> ignore
+        newState
+
+    validateChannel gmc
+    >=> connectChannel ctx.Proxy.Guild ctx gmc
+    >>= prepareToTranslate
+    |> function
+    | Ok state -> state
     | Error err ->
       Utils.sendEmbed gmc <| Utils.answerEmbed Play $"Ошибка воспроизведения: {err.ToString()}"
       ctx.State
@@ -252,11 +280,12 @@ module Bard =
         Utils.sendEmbed gmc <| Utils.answerEmbed Join "Не могу сменить канал во время воспроизведения"
         cycle ctx.State
       | PlayerState.StopPlaying _ | PlayerState.WaitSong ->
-        match validateChannel gmc with
-        | Ok user ->
-          let client = connectChannel user ctx.Proxy.Guild ctx
+        validateChannel gmc
+        >=> connectChannel ctx.Proxy.Guild ctx gmc
+        |> function
+        | Ok client ->
           let s = { ctx.State with AudioClient = Some client }
-          Utils.sendEmbed gmc <| Utils.answerEmbed Join $"Запрыгнула в канал {user.VoiceChannel.Name}"
+          Utils.sendEmbed gmc <| Utils.answerEmbed Join "Запрыгнула в канал"
           cycle s
         | Error err ->
           Utils.sendEmbed gmc <| Utils.answerEmbed Join $"Не удалось зайти в канал {err.ToString()}"

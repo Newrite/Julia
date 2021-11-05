@@ -56,7 +56,7 @@ module Discord =
 
     module private JuliaMessages =
 
-      let private createGuildActors (guild: SocketGuild) =
+      let inline private createGuildActors (guild: SocketGuild) =
 
         let actorGuildName: string<actor_name> = % sprintf "%s%d" %Sys.Names.guildActor guild.Id
         let actorGuildFunc = GuildActor.guildActor <| Sys.Proxy.create guild

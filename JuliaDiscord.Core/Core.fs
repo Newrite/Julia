@@ -24,6 +24,18 @@ open System.Collections.Generic
 open FSharp.UMX
 open Discord.WebSocket
 
+[<AutoOpen>]
+module Operators =
+  
+  let inline (>=>) twoTrackInput switchFunction =
+    match twoTrackInput with
+    | Ok s -> switchFunction s
+    | Error f -> Error f
+  
+  let inline (>>=) twoTrackInput switchFunction =
+    match twoTrackInput with
+    | Ok s -> Ok(switchFunction s)
+    | Error f -> Error f
 
 [<Measure>] type actor_name
 [<Measure>] type system_name
@@ -263,14 +275,17 @@ module ActorContexts =
 type BardErrros =
   | UserNoInVoiceChannel
   | IsNoGuildMessage
+  | CantGetAudioClientWhenTryConnect
   with
   
   override self.ToString() =
     match self with
-    |UserNoInVoiceChannel ->
+    | UserNoInVoiceChannel ->
       "Currently user no connect to voice channel"
-    |IsNoGuildMessage ->
+    | IsNoGuildMessage ->
       "Message from this user is not from guild"
+    | CantGetAudioClientWhenTryConnect ->
+      "Can't get AudioClient when try to connect voice channel"
 
 [<RequireQualifiedAccess>]
 type SystemErrros =
