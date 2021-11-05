@@ -68,6 +68,8 @@ module Sys =
 
     let guildActor: string<actor_name> = % "guildactor"
 
+    let youtuber: string<actor_name> = % "youtuber"
+
     let getSystemPath (name: string<actor_name>) = sprintf "akka://%s/user/%s" %system %name
 
     let getSystemGuildPath (name: string<actor_name>) (id: uint64) = sprintf "akka://%s/user/%s%d" %system %name id
@@ -123,6 +125,62 @@ module Sys =
 
   module Proxy =
 
+    module GuildSystem =
+      
+      module Message =
+      
+        let inline songkeeper guildid (msg: GuildSystemMessage) =
+          let path = Names.getSystemGuildPath Names.songkeeper guildid
+          let songkeeper = select instance path
+          songkeeper <! msg
+
+        let inline guildActor guildid (msg: GuildSystemMessage) =
+          let path = Names.getSystemGuildPath Names.guildActor guildid
+          let guildActor = select instance path
+          guildActor <! msg
+
+        let inline bard guildid (msg: GuildSystemMessage) =
+          let path = Names.getSystemGuildPath Names.bard guildid
+          let bardActor = select instance path
+          bardActor <! msg
+
+        let inline youtuber guildid (msg: GuildSystemMessage) =
+          let path = Names.getSystemGuildPath Names.youtuber guildid
+          let youtuberActor = select instance path
+          youtuberActor <! msg
+
+        let inline julia (msg: GuildSystemMessage) =
+          let path = Names.getSystemPath Names.client
+          let julia = select instance path
+          julia <! msg
+
+      module Ask =
+      
+        let inline songkeeper guildid (ask: GuildSystemAsk) =
+          let path = Names.getSystemGuildPath Names.songkeeper guildid
+          let songkeeper = select instance path
+          songkeeper <? ask
+
+        let inline guildActor guildid (ask: GuildSystemAsk) =
+          let path = Names.getSystemGuildPath Names.guildActor guildid
+          let guildActor = select instance path
+          guildActor <? ask
+
+        let inline bard guildid (ask: GuildSystemAsk) =
+          let path = Names.getSystemGuildPath Names.bard guildid
+          let bardActor = select instance path
+          bardActor  <? ask
+
+        let inline youtuber guildid (ask: GuildSystemAsk) =
+          let path = Names.getSystemGuildPath Names.youtuber guildid
+          let youtuberActor = select instance path
+          youtuberActor <? ask
+
+        let inline julia (ask: GuildSystemAsk) =
+          let path = Names.getSystemPath Names.client
+          let julia = select instance path
+          julia <? ask
+
     module Message =
 
       let inline songkeeper guildid (msg: SongkeeperMessages) =
@@ -140,6 +198,11 @@ module Sys =
         let bardActor = select instance path
         bardActor <! msg
 
+      let inline youtuber guildid (msg: YoutuberMessages) =
+        let path = Names.getSystemGuildPath Names.youtuber guildid
+        let youtuberActor = select instance path
+        youtuberActor <! msg
+
       let inline julia (msg: JuliaMessages) =
         let path = Names.getSystemPath Names.client
         let julia = select instance path
@@ -152,6 +215,49 @@ module Sys =
         let songkeeper = select instance path
         songkeeper <? ask
 
+    type private GuildProxy<'a> with
+
+      static member private Create (guild: SocketGuild) = {
+
+        guild = guild
+
+        guildSystem = {|
+
+          message = {|
+            Songkeeper = GuildSystem.Message.songkeeper guild.Id
+            GuildActor = GuildSystem.Message.guildActor guild.Id
+            Bard       = GuildSystem.Message.bard       guild.Id
+            Youtuber   = GuildSystem.Message.youtuber   guild.Id
+            Julia      = GuildSystem.Message.julia
+          |}
+
+          ask     = {|
+            Songkeeper = GuildSystem.Ask.songkeeper guild.Id
+            GuildActor = GuildSystem.Ask.guildActor guild.Id
+            Bard       = GuildSystem.Ask.bard       guild.Id
+            Youtuber   = GuildSystem.Ask.youtuber   guild.Id
+            Julia      = GuildSystem.Ask.julia
+          |}
+
+        |}
+
+        message = {|
+          Songkeeper = Message.songkeeper guild.Id
+          GuildActor = Message.guildActor guild.Id
+          Bard       = Message.bard       guild.Id
+          Youtuber   = Message.youtuber   guild.Id
+          Julia      = Message.julia
+        |}
+
+        ask     = {|
+          Songkeeper = Ask.songkeeper guild.Id
+        |}
+
+      }
+
+    let create (guild: SocketGuild) =
+      GuildProxy<_>.Create guild
+
 module Utils =
 
   let inline answerEmbed title desc = 
@@ -161,11 +267,19 @@ module Utils =
       .WithDescription(desc)
       .Build()
 
-  let inline sendMessage (sm: SocketMessage) message =
-    sm.Channel.SendMessageAsync(message) |> ignore
+  let inline answerWithThumbnailEmbed title desc (url: string<thumbnail>) = 
+    EmbedBuilder()
+      .WithTitle(title)
+      .WithColor(Color.DarkPurple)
+      .WithDescription(desc)
+      .WithThumbnailUrl(%url)
+      .Build()
 
-  let inline sendEmbed (sm: SocketMessage) embed =
-    sm.Channel.SendMessageAsync(embed = embed) |> ignore
+  let inline sendMessage (gmc: GuildMessageContext) message =
+    gmc.Message.Channel.SendMessageAsync(message) |> ignore
+
+  let inline sendEmbed (gmc: GuildMessageContext) embed =
+    gmc.Message.Channel.SendMessageAsync(embed = embed) |> ignore
   
   let memoize (f: 'a -> 'b) =
     let dict = Dictionary<'a, 'b>()

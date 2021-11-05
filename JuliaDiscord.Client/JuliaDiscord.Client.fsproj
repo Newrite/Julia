@@ -21,8 +21,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Music.fs" />
-    <Compile Include="Client.fs" />
+    <Compile Include="actors\music\Songkeeper.fs" />
+    <Compile Include="actors\music\Bard.fs" />
+    <Compile Include="actors\music\Youtuber.fs" />
+    <Compile Include="actors\Guild.fs" />
+    <Compile Include="actors\Client.fs" />
   </ItemGroup>
 
   <ItemGroup>
