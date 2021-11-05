@@ -2,6 +2,7 @@
 
 open Discord
 open Discord.Net
+open Discord.Audio
 open Discord.WebSocket
 
 open Akka
@@ -47,15 +48,15 @@ type Song = {
 
 [<NoComparison>]
 type BardPlaying = {
-  FFmpeg:    Process
-  YoutubeDL: Process
-  Song:      Song
+  FFmpeg:      Process
+  YoutubeDL:   Process
+  Song:        Song
 }
 
 [<NoComparison>]
 [<RequireQualifiedAccess>]
 type PlayerState =
-  | WaitSong
+  | WaitSong    
   | Playing     of BardPlaying
   | Loop        of BardPlaying
   | StopPlaying of Song
@@ -148,6 +149,7 @@ module ActorStates =
   [<NoComparison>]
   type BardState = {
     PlayerState: PlayerState
+    AudioClient: IAudioClient option
   }
 
   [<NoComparison>]
@@ -244,9 +246,9 @@ module ActorContexts =
   [<NoComparison>]
   [<NoEquality>]
   type BardContext<'a, 'b> = {
-    State:   BardState
-    Mailbox: Actor<'a>
-    Proxy:   GuildProxy<'b>
+    State:       BardState
+    Mailbox:     Actor<'a>
+    Proxy:       GuildProxy<'b>
   }
   
   [<NoComparison>]

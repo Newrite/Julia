@@ -33,9 +33,9 @@ module Youtuber =
 
   module private RequestParser =
 
-    let private songFromYoutubeAsyncMem = 
+    let private songFromYoutubeAsyncMem (youtube: YoutubeClient) (url: string<url>) = 
     
-      let songFromYoutubeAsync (youtube: YoutubeClient) (url: string<url>) = task {
+      task {
 
         let urlUnwrap: string = %url
     
@@ -48,23 +48,23 @@ module Youtuber =
             Song.Thumbnail = %video.Thumbnails.[0].Url}
       }
     
-      Utils.memoize songFromYoutubeAsync
+      //Utils.memoize songFromYoutubeAsync
     
-    let private videoFromYoutubeSearchAsyncMem =
+    let private videoFromYoutubeSearchAsyncMem (youtube: YoutubeClient) (message: string<url>) =
     
-      let videoFromYoutubeSearchAsync (youtube: YoutubeClient) (message: string<url>) = task {
+      task {
 
         let messageUnwrap: string = %message
     
         return! youtube.Search.GetVideosAsync(messageUnwrap).CollectAsync(1)
       }
     
-      Utils.memoize videoFromYoutubeSearchAsync
+      //Utils.memoize videoFromYoutubeSearchAsync
     
     
-    let private videosFromYoutubePlaylistAsyncMem =
+    let private videosFromYoutubePlaylistAsyncMem (youtube: YoutubeClient) (url: string<url>) =
     
-      let videosFromYoutubePlaylistAsync (youtube: YoutubeClient) (url: string<url>) = task {
+      task {
 
         let urlUnwrap: string = %url
         
@@ -72,7 +72,7 @@ module Youtuber =
     
       }
     
-      Utils.memoize videosFromYoutubePlaylistAsync
+      //Utils.memoize videosFromYoutubePlaylistAsync
 
     let private parseRequest (youtube: YoutubeClient) (guild: SocketGuild) (ym: YoutuberMessages) = async {
 

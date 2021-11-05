@@ -119,28 +119,28 @@ module GuildActor =
       let inline actorsStatus (ctx: GuildActorContext<_, _>) gmc cycle =
 
         task {
-
+        
           Utils.sendEmbed gmc <| Utils.answerEmbed Status "Опрашиваются акторы гильдии"
 
-          let bardAnswer: string =
+          let! (bardAnswer: string) =
             GuildSystemAsk.Status gmc
             |> ctx.Proxy.GuildSystemAsk.Bard
-            |> Async.RunSynchronously
 
-          let songkeeperAnswer: string =
+          let! (songkeeperAnswer: string) =
             GuildSystemAsk.Status gmc
             |> ctx.Proxy.GuildSystemAsk.Songkeeper
-            |> Async.RunSynchronously
 
-          let youtuberAnswer: string =
+          let! (youtuberAnswer: string) =
             GuildSystemAsk.Status gmc
             |> ctx.Proxy.GuildSystemAsk.Youtuber
-            |> Async.RunSynchronously
+
+          let! (guildActorAnswer: string) =
+            GuildSystemAsk.Status gmc
+            |> ctx.Proxy.GuildSystemAsk.GuildActor
 
           Utils.sendEmbed gmc
           <| Utils.answerEmbed Status ($"**Bard**\n{bardAnswer}\n**Songkeeper**\n{songkeeperAnswer}\n" +
-              $"**Youtuber**\n{youtuberAnswer}\n**GuildActor**\nЖив, цел, арёл!")
-
+              $"**Youtuber**\n{youtuberAnswer}\n**GuildActor**\n{guildActorAnswer}")
         } |> ignore
 
         cycle()
@@ -153,7 +153,6 @@ module GuildActor =
     module private GuildSystemAsk =
       
       let inline status (ctx: GuildActorContext<_, _>) gmc cycle =
-        Utils.sendEmbed gmc <| Utils.answerEmbed Status "**GuildActor**\nЖив, цел, арёл!"
         ctx.Mailbox.Sender() <! "Жив, цел, арёл!"
         cycle()
     
@@ -165,7 +164,7 @@ module GuildActor =
         let ctx: GuildActorContext<_, _> = { Mailbox = mb; Proxy = guildProxy }
 
         match msg with
-        | LifecycleEvent le -> 
+        | LifecycleEvent le ->
           match le with
           | PreStart                    -> return! LifecycleEvent.preStart    ctx cycle
           | PostStop                    -> return! LifecycleEvent.postStop    ctx cycle
