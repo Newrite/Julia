@@ -1,4 +1,4 @@
-﻿namespace JuliaDiscord.Core
+﻿namespace Julia.Core
 
 open System
 
@@ -75,7 +75,9 @@ module Sys =
     let getSystemGuildPath (name: string<actor_name>) (id: uint64) = sprintf "akka://%s/user/%s%d" %system %name id
 
   let instance =
-    System.create %Names.system <| Configuration.defaultConfig()
+
+    let conf2 = Configuration.load()
+    System.create %Names.system <| conf2
 
   let private supervisorStrategy() =
     Strategy.OneForOne(
@@ -279,7 +281,9 @@ module Utils =
     gmc.Message.Channel.SendMessageAsync(message) |> ignore
 
   let inline sendEmbed (gmc: GuildMessageContext) embed =
-    gmc.Message.Channel.SendMessageAsync(embed = embed) |> ignore
+    gmc.Message.Channel.SendMessageAsync(embed = embed).Result.ModifyAsync(fun (mp: MessageProperties) ->
+      mp.Embed <- answerEmbed "Parser -> Play" "New desc"
+      ()) |> ignore
   
   let memoize (f: 'a -> 'b) =
     let dict = Dictionary<'a, 'b>()

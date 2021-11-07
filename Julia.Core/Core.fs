@@ -1,4 +1,4 @@
-﻿namespace JuliaDiscord.Core
+﻿namespace Julia.Core
 
 open Discord
 open Discord.Net

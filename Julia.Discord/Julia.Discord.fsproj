@@ -21,15 +21,24 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Core.fs" />
-    <Compile Include="System.fs" />
+    <Compile Include="actors\music\Songkeeper.fs" />
+    <Compile Include="actors\music\Bard.fs" />
+    <Compile Include="actors\music\Youtuber.fs" />
+    <Compile Include="actors\Guild.fs" />
+    <Compile Include="actors\Client.fs" />
   </ItemGroup>
+
+  <ItemGroup />
 
   <ItemGroup>
     <PackageReference Include="Akkling" Version="0.12.0" />
     <PackageReference Include="Discord.Net" Version="2.4.0" />
     <PackageReference Include="FSharp.UMX" Version="1.1.0" />
     <PackageReference Include="YoutubeExplode" Version="6.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Julia.Core\Julia.Core.fsproj" />
   </ItemGroup>
 
 </Project>

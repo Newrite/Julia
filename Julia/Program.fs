@@ -1,5 +1,5 @@
-﻿open JuliaDiscord.Core
-open JuliaDiscord.Client
+﻿open Julia.Core
+open Julia.Discord
 
 open Akkling
 

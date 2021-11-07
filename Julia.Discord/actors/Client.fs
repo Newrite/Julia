@@ -1,4 +1,4 @@
-﻿namespace JuliaDiscord.Client
+﻿namespace Julia.Discord
 
 open System
 open System.Threading
@@ -19,9 +19,9 @@ open System.Diagnostics
 
 open FSharp.UMX
 
-open JuliaDiscord.Core
+open Julia.Core
 open System.Collections.Generic
-open JuliaDiscord.Core
+open Julia.Core
 
 module Discord =
   

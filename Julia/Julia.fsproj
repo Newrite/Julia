@@ -15,8 +15,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\JuliaDiscord.Client\JuliaDiscord.Client.fsproj" />
-    <ProjectReference Include="..\JuliaDiscord.Core\JuliaDiscord.Core.fsproj" />
+    <ProjectReference Include="..\Julia.Discord\Julia.Discord.fsproj" />
+    <ProjectReference Include="..\Julia.Core\Julia.Core.fsproj" />
   </ItemGroup>
 
 </Project>

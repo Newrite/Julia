@@ -1,4 +1,4 @@
-﻿namespace JuliaDiscord.Client
+﻿namespace Julia.Discord
 
 open System
 open System.IO
@@ -25,9 +25,7 @@ open YoutubeExplode.Videos.Streams
 
 open FSharp.UMX
 
-open JuliaDiscord.Core
-open Discord.Audio
-open Discord.Audio
+open Julia.Core
 
 module Bard =
 
@@ -511,17 +509,17 @@ module Bard =
       | :? BardMessages as bm ->
         match bm with
         | BardMessages.ParseRequest gmc -> return! BardMessages.parseRequest ctx gmc cycle
-        | BardMessages.Join gmc         -> return! BardMessages.join         ctx gmc cycle
-        | BardMessages.Leave gmc        -> return! BardMessages.leave        ctx gmc cycle
-        | BardMessages.Resume gmc       -> return! BardMessages.resume       ctx gmc cycle
-        | BardMessages.Loop gmc         -> return! BardMessages.loop         ctx gmc cycle
+        | BardMessages.Join         gmc -> return! BardMessages.join         ctx gmc cycle
+        | BardMessages.Leave        gmc -> return! BardMessages.leave        ctx gmc cycle
+        | BardMessages.Resume       gmc -> return! BardMessages.resume       ctx gmc cycle
+        | BardMessages.Loop         gmc -> return! BardMessages.loop         ctx gmc cycle
         | BardMessages.Play (gmc, song) -> return! BardMessages.play         ctx gmc song cycle
-        | BardMessages.Skip gmc         -> return! BardMessages.skip         ctx gmc cycle
-        | BardMessages.Query gmc        -> return! BardMessages.query        ctx gmc cycle
-        | BardMessages.Stop gmc         -> return! BardMessages.stop         ctx gmc cycle
-        | BardMessages.Clear gmc        -> return! BardMessages.clear        ctx gmc cycle
-        | BardMessages.NowPlay gmc      -> return! BardMessages.nowPlay      ctx gmc cycle
-        | BardMessages.Final gmc        -> return! BardMessages.final        ctx gmc cycle
+        | BardMessages.Skip         gmc -> return! BardMessages.skip         ctx gmc cycle
+        | BardMessages.Query        gmc -> return! BardMessages.query        ctx gmc cycle
+        | BardMessages.Stop         gmc -> return! BardMessages.stop         ctx gmc cycle
+        | BardMessages.Clear        gmc -> return! BardMessages.clear        ctx gmc cycle
+        | BardMessages.NowPlay      gmc -> return! BardMessages.nowPlay      ctx gmc cycle
+        | BardMessages.Final        gmc -> return! BardMessages.final        ctx gmc cycle
       | :? GuildSystemMessage as gsm ->
         match gsm with
         | GuildSystemMessage.Restart gmc -> return! GuildSystemMessage.restart ctx gmc cycle

@@ -1,4 +1,4 @@
-﻿namespace JuliaDiscord.Client
+﻿namespace Julia.Discord
 
 open System
 open System.IO
@@ -25,7 +25,7 @@ open YoutubeExplode.Videos.Streams
 
 open FSharp.UMX
 
-open JuliaDiscord.Core
+open Julia.Core
 
 
 module Songkeeper =

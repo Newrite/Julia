@@ -1,0 +1,19 @@
+# Rules in this file were initially inferred by Visual Studio IntelliCode from the G:\Programming\Languages\F#\JuliaDiscord codebase based on best match to current usage at 07.11.2021
+# You can modify the rules from these initially generated values to suit your own policies
+# You can learn more about editorconfig here: https://docs.microsoft.com/en-us/visualstudio/ide/editorconfig-code-style-settings-reference
+[*.fs]
+
+akka {
+  stdout-loglevel = ERROR
+  loglevel = ERROR
+  log-config-on-start = on
+  actor {
+    debug {
+      receive = on
+      autoreceive = on
+      lifecycle = on
+      event-stream = on
+      unhandled = on
+    }
+  }
+}

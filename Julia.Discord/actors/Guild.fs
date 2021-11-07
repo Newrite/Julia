@@ -1,4 +1,4 @@
-﻿namespace JuliaDiscord.Client
+﻿namespace Julia.Discord
 
 open System
 open System.Threading
@@ -19,7 +19,7 @@ open System.Diagnostics
 
 open FSharp.UMX
 
-open JuliaDiscord.Core
+open Julia.Core
 
 module GuildActor =
 
@@ -162,6 +162,15 @@ module GuildActor =
         let! (msg: obj) = mb.Receive()
 
         let ctx: GuildActorContext<_, _> = { Mailbox = mb; Proxy = guildProxy }
+
+        //log Event.LogLevel.InfoLevel ctx.Mailbox "Hello from Guild Actor!"
+        (*
+        { Mailbox = ctx.Mailbox; Message = msg }
+        |> LoggerMessage.Error
+        |> ctx.Proxy.Message.Logger
+        *)
+
+        
 
         match msg with
         | LifecycleEvent le ->
