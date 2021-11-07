@@ -3,17 +3,13 @@
 open System
 
 open Discord
-open Discord.Net
+
 open Discord.WebSocket
 
 open Akka
 open Akkling
 open Akka.Actor
-open Akkling.Actors
 
-open YoutubeExplode.Videos.Streams
-
-open System.Diagnostics
 open System.Collections.Generic
 
 open FSharp.UMX

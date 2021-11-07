@@ -1,27 +1,15 @@
 ﻿namespace Julia.Discord
 
-open System
-open System.IO
 open System.Threading
-open System.Threading.Tasks
-open System.Diagnostics
 open System.Collections.Generic
-open System.Collections.Concurrent
 
-open Discord
-open Discord.Net
-open Discord.Audio
 open Discord.WebSocket
 
-open Akka
 open Akkling
-open Akka.Actor
-open Akkling.Actors
 
 open YoutubeExplode
 open YoutubeExplode.Common
-open YoutubeExplode.Videos
-open YoutubeExplode.Videos.Streams
+
 
 open FSharp.UMX
 

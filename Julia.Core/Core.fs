@@ -1,28 +1,20 @@
 ﻿namespace Julia.Core
 
 open Discord
-open Discord.Net
 open Discord.Audio
 open Discord.WebSocket
 
-open Akka
 open Akkling
 open Akka.Actor
-open Akkling.Actors
 
 open YoutubeExplode
-open YoutubeExplode.Common
-open YoutubeExplode.Videos
-open YoutubeExplode.Videos.Streams
 
 open System
 open System.Threading
 open System.Diagnostics
-open System.Threading.Tasks
 open System.Collections.Generic
 
 open FSharp.UMX
-open Discord.WebSocket
 
 [<AutoOpen>]
 module Operators =

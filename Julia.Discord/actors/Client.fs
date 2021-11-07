@@ -5,22 +5,13 @@ open System.Threading
 open System.Threading.Tasks
 
 open Discord
-open Discord.Net
+
 open Discord.WebSocket
 
-open Akka
 open Akkling
-open Akka.Actor
-open Akkling.Actors
-
-open YoutubeExplode.Videos.Streams
-
-open System.Diagnostics
 
 open FSharp.UMX
 
-open Julia.Core
-open System.Collections.Generic
 open Julia.Core
 
 module Discord =
