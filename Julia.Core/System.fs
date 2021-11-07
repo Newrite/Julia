@@ -14,6 +14,19 @@ open System.Collections.Generic
 
 open FSharp.UMX
 
+[<AutoOpen>]
+module Operators =
+  
+  let inline (>=>) twoTrackInput switchFunction =
+    match twoTrackInput with
+    | Ok s -> switchFunction s
+    | Error f -> Error f
+  
+  let inline (>>=) twoTrackInput switchFunction =
+    match twoTrackInput with
+    | Ok s -> Ok(switchFunction s)
+    | Error f -> Error f
+
 module private SuperVisorMessages =
   
   let inline createActor actorFunc actorName (ctx: SupervisorContext<_>) cycleFunc =

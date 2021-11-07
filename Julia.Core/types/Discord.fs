@@ -5,7 +5,6 @@ open Discord.Audio
 open Discord.WebSocket
 
 open Akkling
-open Akka.Actor
 
 open YoutubeExplode
 
@@ -15,25 +14,6 @@ open System.Diagnostics
 open System.Collections.Generic
 
 open FSharp.UMX
-
-[<AutoOpen>]
-module Operators =
-  
-  let inline (>=>) twoTrackInput switchFunction =
-    match twoTrackInput with
-    | Ok s -> switchFunction s
-    | Error f -> Error f
-  
-  let inline (>>=) twoTrackInput switchFunction =
-    match twoTrackInput with
-    | Ok s -> Ok(switchFunction s)
-    | Error f -> Error f
-
-[<Measure>] type actor_name
-[<Measure>] type system_name
-[<Measure>] type url
-[<Measure>] type title
-[<Measure>] type thumbnail
 
 [<NoComparison>]
 type GuildMessageContext = {
@@ -66,29 +46,7 @@ type PlayerState =
   | StopPlaying of Song
 
 [<AutoOpen>]
-module ActorMessages =
-
-  [<NoEquality>]
-  [<NoComparison>]
-  [<RequireQualifiedAccess>]
-  type SupervisorMessages<'a> =
-    | CreateActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name>
-  
-    | CreateSystemActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name>
-  
-    | CreateSupervisorActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name> * (unit -> SupervisorStrategy)
-  
-    | CreateSystemSupervisorActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name> * (unit -> SupervisorStrategy)
-  
-    | ActorMessage
-      of string<actor_name> * obj
-  
-    | GetActor
-      of string<actor_name>
+module ActorMessagesDiscord =
 
   [<NoComparison>]
   [<RequireQualifiedAccess>]
@@ -148,7 +106,7 @@ module ActorMessages =
     | Restart of GuildMessageContext
 
 [<AutoOpen>]
-module ActorStates =
+module ActorStatesDiscord =
   
   [<NoComparison>]
   type BardState = {
@@ -164,7 +122,7 @@ module ActorStates =
   }
 
 [<AutoOpen>]
-module ActorAsks =
+module ActorAsksDiscord =
 
   [<NoComparison>]
   [<RequireQualifiedAccess>]
@@ -219,12 +177,7 @@ with
   member self.GuildSystemAsk     = self.guildSystem.ask
 
 [<AutoOpen>]
-module ActorContexts =
-
-  [<NoComparison>]
-  type SupervisorContext<'a> = {
-    Mailbox: Actor<'a>
-  }
+module ActorContextsDiscord =
 
   [<NoComparison>]
   type JuliaContext<'a> = {
@@ -278,13 +231,3 @@ type BardErrros =
       "Message from this user is not from guild"
     | CantGetAudioClientWhenTryConnect ->
       "Can't get AudioClient when try to connect voice channel"
-
-[<RequireQualifiedAccess>]
-type SystemErrros =
-  | Bard of BardErrros
-  with
-
-  override self.ToString() =
-    match self with
-    | Bard be ->
-      be.ToString() |> sprintf "%s"

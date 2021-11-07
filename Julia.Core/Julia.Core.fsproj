@@ -21,11 +21,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Core.fs" />
+    <Compile Include="types\Core.fs" />
+    <Compile Include="types\Discord.fs" />
+    <Compile Include="types\System.fs" />
     <Compile Include="System.fs" />
   </ItemGroup>
-
-  <ItemGroup />
 
   <ItemGroup>
     <PackageReference Include="Akkling" Version="0.12.0" />
