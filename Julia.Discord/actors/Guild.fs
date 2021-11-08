@@ -1,181 +1,188 @@
 ﻿namespace Julia.Discord
 
+open Discord.WebSocket
+
 open Akkling
 
 open Julia.Core
+open System
 
 module GuildActor =
 
-    let [<Literal>] private Restart = "Restart"
-    let [<Literal>] private Status = "Status"
+  [<NoComparison>]
+  [<NoEquality>]
+  type private GuildActorContext<'a> = {
+    Mailbox: Actor<'a>
+    Guild:   SocketGuild
+    Proxy:   Sys.ProxyDiscord
+  }
 
-    let commandsSystem = [ 
-      {| command = Restart
-         message = GuildActorMessages.ActorsRestart
-         desc    = "Перезапускает акторов гильдии"|}
-      {| command = Status
-         message = GuildActorMessages.ActorsStatus
-         desc    = "Выдает статус акторов гильдии"|}
-    ]
+  let [<Literal>] private Restart = "Restart"
+  let [<Literal>] private Status = "Status"
 
-    module private LifecycleEvent =
+  let commandsSystem = [ 
+    {| command = Restart
+       message = GuildActorMessages.ActorsRestart
+       desc    = "Перезапускает акторов гильдии"|}
+    {| command = Status
+       message = GuildActorMessages.ActorsStatus
+       desc    = "Выдает статус акторов гильдии"|}
+  ]
 
-      let inline preStart (ctx: GuildActorContext<_, _>) cycle =
-        printfn "Actor for guild %s start" ctx.Proxy.Guild.Name
-        cycle()
+  module private LifecycleEvent =
 
-      let inline postStop (ctx: GuildActorContext<_, _>) cycle =
-        printfn "PostStop"
-        ignored()
+    let inline preStart (ctx: GuildActorContext<_>) cycle =
+      printfn "Actor for guild %s start" ctx.Guild.Name
+      cycle()
 
-      let inline preRestart (ctx: GuildActorContext<_, _>) cause message cycle =
-        printfn "PreRestart cause: %A message: %A" cause message
-        ignored()
+    let inline postStop (ctx: GuildActorContext<_>) cycle =
+      printfn "PostStop"
+      ignored()
 
-      let inline postRestart (ctx: GuildActorContext<_, _>) cause cycle =
-        printfn "PostRestart cause: %A" cause
-        ignored()
+    let inline preRestart (ctx: GuildActorContext<_>) cause message cycle =
+      printfn "PreRestart cause: %A message: %A" cause message
+      ignored()
 
-    module private GuildActorMessages =
+    let inline postRestart (ctx: GuildActorContext<_>) cause cycle =
+      printfn "PostRestart cause: %A" cause
+      ignored()
 
-      let private parseCommands (ctx: GuildActorContext<_, _>) (gmc: GuildMessageContext) =
+  module private GuildActorMessages =
 
-        let msgArray: string[] = gmc.Message.Content.ToLower().Split(' ')
+    let private parseCommands (ctx: GuildActorContext<_>) (gmc: GuildMessageContext) =
 
-        let prefix = ">"
+      let msgArray: string[] = gmc.Message.Content.ToLower().Split(' ')
 
-        let helpCommands() =
-          if msgArray.[0].ToLower().StartsWith(prefix + "help") then
-            let mutable commandsString = ""
-            commandsString <- commandsString + "**Комманды барда**\n"
-            for command in Bard.commands do
-              commandsString <- commandsString + sprintf "**%s**::\t\t %s\n---\n" command.command command.desc
-            commandsString <- commandsString + "---\n**Комманды системы**\n"
-            for command in commandsSystem do
-              commandsString <- commandsString + sprintf "**%s**::\t\t %s\n---\n" command.command command.desc
-            Utils.sendEmbed gmc <| Utils.answerEmbed "Help" (commandsString.Substring(0, commandsString.Length - 4))
+      let prefix = ">"
 
-        let bardCommands() =
-          Bard.commands
+      let helpCommands() =
+        if msgArray.[0].ToLower().StartsWith(prefix + "help") then
+          let mutable commandsString = ""
+          commandsString <- commandsString + "**Комманды барда**\n"
+          for command in Bard.commands do
+            commandsString <- commandsString + sprintf "**%s**::\t\t %s\n---\n" command.command command.desc
+          commandsString <- commandsString + "---\n**Комманды системы**\n"
+          for command in commandsSystem do
+            commandsString <- commandsString + sprintf "**%s**::\t\t %s\n---\n" command.command command.desc
+          Utils.sendEmbed gmc <| Utils.answerEmbed "Help" (commandsString.Substring(0, commandsString.Length - 4))
+
+      let bardCommands() =
+        Bard.commands
+        |> List.iter (fun commands ->
+          if msgArray.[0].ToLower().StartsWith(prefix + commands.command.ToLower()) then
+            commands.message gmc
+            |> ctx.Proxy.Message.Bard
+        )
+
+      let guildCommandsSystem() =
+        if gmc.Message.Author.Id = 161572135301677057UL then
+          commandsSystem
           |> List.iter (fun commands ->
             if msgArray.[0].ToLower().StartsWith(prefix + commands.command.ToLower()) then
               commands.message gmc
-              |> ctx.Proxy.Message.Bard
+              |> ctx.Proxy.Message.GuildActor
           )
 
-        let guildCommandsSystem() =
-          if gmc.Message.Author.Id = 161572135301677057UL then
-            commandsSystem
-            |> List.iter (fun commands ->
-              if msgArray.[0].ToLower().StartsWith(prefix + commands.command.ToLower()) then
-                commands.message gmc
-                |> ctx.Proxy.Message.GuildActor
-            )
-
-        if msgArray.Length > 0 then
-          bardCommands()
-          guildCommandsSystem()
-          helpCommands()
-      
-      let inline guildMessage (ctx: GuildActorContext<_, _>) gmc cycle =
-        parseCommands ctx gmc
-        cycle()
-
-      let inline actorsRestart (ctx: GuildActorContext<_, _>) gmc cycle =
-
-        Utils.sendEmbed gmc <| Utils.answerEmbed Restart "Перезапускаются акторы гильдии"
-
-        GuildSystemMessage.Restart gmc
-        |> ctx.Proxy.GuildSystemMessage.Bard
-
-        GuildSystemMessage.Restart gmc
-        |> ctx.Proxy.GuildSystemMessage.Songkeeper
-
-        GuildSystemMessage.Restart gmc
-        |> ctx.Proxy.GuildSystemMessage.Youtuber
-
-        GuildSystemMessage.Restart gmc
-        |> ctx.Proxy.GuildSystemMessage.GuildActor
-
-        cycle()
-
-      let inline actorsStatus (ctx: GuildActorContext<_, _>) gmc cycle =
-
-        task {
-        
-          Utils.sendEmbed gmc <| Utils.answerEmbed Status "Опрашиваются акторы гильдии"
-
-          let! (bardAnswer: string) =
-            GuildSystemAsk.Status gmc
-            |> ctx.Proxy.GuildSystemAsk.Bard
-
-          let! (songkeeperAnswer: string) =
-            GuildSystemAsk.Status gmc
-            |> ctx.Proxy.GuildSystemAsk.Songkeeper
-
-          let! (youtuberAnswer: string) =
-            GuildSystemAsk.Status gmc
-            |> ctx.Proxy.GuildSystemAsk.Youtuber
-
-          let! (guildActorAnswer: string) =
-            GuildSystemAsk.Status gmc
-            |> ctx.Proxy.GuildSystemAsk.GuildActor
-
-          Utils.sendEmbed gmc
-          <| Utils.answerEmbed Status ($"**Bard**\n{bardAnswer}\n**Songkeeper**\n{songkeeperAnswer}\n" +
-              $"**Youtuber**\n{youtuberAnswer}\n**GuildActor**\n{guildActorAnswer}")
-        } |> ignore
-
-        cycle()
-
-    module private GuildSystemMessage =
-      
-      let inline restart (ctx: GuildActorContext<_, _>) gmc cycle =
-        failwith "restart"
-
-    module private GuildSystemAsk =
-      
-      let inline status (ctx: GuildActorContext<_, _>) gmc cycle =
-        ctx.Mailbox.Sender() <! "Жив, цел, арёл!"
-        cycle()
+      if msgArray.Length > 0 then
+        bardCommands()
+        guildCommandsSystem()
+        helpCommands()
     
-    let guildActor (guildProxy: GuildProxy<_>) (mb: Actor<_>) =
-      let rec cycle() = actor {
+    let inline guildMessage (ctx: GuildActorContext<_>) gmc cycle =
+      parseCommands ctx gmc
+      cycle()
 
-        let! (msg: obj) = mb.Receive()
+    let inline actorsRestart (ctx: GuildActorContext<_>) gmc cycle =
 
-        let ctx: GuildActorContext<_, _> = { Mailbox = mb; Proxy = guildProxy }
+      Utils.sendEmbed gmc <| Utils.answerEmbed Restart "Перезапускаются акторы гильдии"
 
-        //log Event.LogLevel.InfoLevel ctx.Mailbox "Hello from Guild Actor!"
-        (*
-        { Mailbox = ctx.Mailbox; Message = msg }
-        |> LoggerMessage.Error
-        |> ctx.Proxy.Message.Logger
-        *)
+      GuildSystemMessage.Restart gmc
+      |> ctx.Proxy.GuildSystem.Message.Bard
 
-        
+      GuildSystemMessage.Restart gmc
+      |> ctx.Proxy.GuildSystem.Message.Songkeeper
 
-        match msg with
-        | LifecycleEvent le ->
-          match le with
-          | PreStart                    -> return! LifecycleEvent.preStart    ctx cycle
-          | PostStop                    -> return! LifecycleEvent.postStop    ctx cycle
-          | PreRestart (cause, message) -> return! LifecycleEvent.preRestart  ctx cause message cycle
-          | PostRestart cause           -> return! LifecycleEvent.postRestart ctx cause cycle
-        | :? GuildActorMessages as gam ->
-          match gam with
-          | GuildActorMessages.GuildMessage gmc  -> return! GuildActorMessages.guildMessage  ctx gmc cycle
-          | GuildActorMessages.ActorsRestart gmc -> return! GuildActorMessages.actorsRestart ctx gmc cycle
-          | GuildActorMessages.ActorsStatus gmc  -> return! GuildActorMessages.actorsStatus  ctx gmc cycle
-        | :? GuildSystemMessage as gsm ->
-          match gsm with
-          | GuildSystemMessage.Restart sm -> return! GuildSystemMessage.restart ctx sm cycle
-        | :? GuildSystemAsk as gsa ->
-          match gsa with
-          | GuildSystemAsk.Status sm -> return! GuildSystemAsk.status ctx sm cycle
-            
-        | _ -> return! Ignore
+      GuildSystemMessage.Restart gmc
+      |> ctx.Proxy.GuildSystem.Message.Youtuber
 
-      }
+      GuildSystemMessage.Restart gmc
+      |> ctx.Proxy.GuildSystem.Message.GuildActor
 
       cycle()
+
+    let inline actorsStatus (ctx: GuildActorContext<_>) gmc cycle =
+
+      async {
+      
+        Utils.sendEmbed gmc <| Utils.answerEmbed Status "Опрашиваются акторы гильдии"
+
+        let! (bardAnswer:       string) =
+          ctx.Proxy.GuildSystem.Ask.Bard       <?? GuildSystemAsk.Status gmc
+
+        let songkeeperAnswer: string =
+          ctx.Proxy.GuildSystem.Ask.Songkeeper <!? GuildSystemAsk.Status gmc
+
+        let youtuberAnswer:   string =
+          ctx.Proxy.GuildSystem.Ask.Youtuber   <!? GuildSystemAsk.Status gmc
+
+        let guildActorAnswer: string =
+          ctx.Proxy.GuildSystem.Ask.GuildActor <!? GuildSystemAsk.Status gmc
+
+        Utils.sendEmbed gmc
+        <| Utils.answerEmbed Status ($"**Bard**\n{bardAnswer}\n**Songkeeper**\n{songkeeperAnswer}\n" +
+            $"**Youtuber**\n{youtuberAnswer}\n**GuildActor**\n{guildActorAnswer}")
+      } |> Async.Start
+        
+      cycle()
+
+  module private GuildSystemMessage =
+    
+    let inline restart (ctx: GuildActorContext<_>) gmc cycle =
+      failwith "restart"
+
+  module private GuildSystemAsk =
+    
+    let inline status (ctx: GuildActorContext<_>) gmc cycle =
+      ctx.Mailbox.Sender() <! "Жив, цел, арёл!"
+      cycle()
+  
+  let guildActor (guildProxy: Sys.ProxyDiscord) (guild: SocketGuild) (mb: Actor<_>) =
+    let rec cycle() = actor {
+
+      let! (msg: obj) = mb.Receive()
+
+      let ctx: GuildActorContext<_> = { Mailbox = mb; Proxy = guildProxy; Guild = guild }
+
+      //log Event.LogLevel.InfoLevel ctx.Mailbox "Hello from Guild Actor!"
+      (*
+      { Mailbox = ctx.Mailbox; Message = msg }
+      |> LoggerMessage.Error
+      |> ctx.Proxy.Message.Logger
+      *)
+
+      
+
+      match msg with
+      | LifecycleEvent le ->
+        match le with
+        | PreStart                    -> return! LifecycleEvent.preStart    ctx cycle
+        | PostStop                    -> return! LifecycleEvent.postStop    ctx cycle
+        | PreRestart (cause, message) -> return! LifecycleEvent.preRestart  ctx cause message cycle
+        | PostRestart cause           -> return! LifecycleEvent.postRestart ctx cause cycle
+      | :? GuildActorMessages as gam ->
+        match gam with
+        | GuildActorMessages.GuildMessage gmc  -> return! GuildActorMessages.guildMessage  ctx gmc cycle
+        | GuildActorMessages.ActorsRestart gmc -> return! GuildActorMessages.actorsRestart ctx gmc cycle
+        | GuildActorMessages.ActorsStatus gmc  -> return! GuildActorMessages.actorsStatus  ctx gmc cycle
+      | :? GuildSystemMessage as gsm ->
+        match gsm with
+        | GuildSystemMessage.Restart sm -> return! GuildSystemMessage.restart ctx sm cycle
+      | :? GuildSystemAsk as gsa ->
+        match gsa with
+        | GuildSystemAsk.Status sm -> return! GuildSystemAsk.status ctx sm cycle
+          
+      | _ -> return! Ignore
+
+    }
+
+    cycle()

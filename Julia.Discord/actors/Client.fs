@@ -15,24 +15,30 @@ open FSharp.UMX
 open Julia.Core
 
 module Discord =
+
+  [<NoComparison>]
+  type private JuliaContext<'a> = {
+    State:   DiscordSocketClient
+    Mailbox: Actor<'a>
+  }
   
   let private token = Environment.GetEnvironmentVariable("JuliaToken")
 
   let private reciveLogAsync log: Task = task {
     JuliaMessages.Log log
-    |> Sys.Proxy.Message.julia
+    |> Sys.Proxy.Discord.Message.julia
   }
 
   let private readyAsync(): Task = task { return printfn "Connected" }
 
   let private messageReceivedAsync socketMessage: Task = task {
     JuliaMessages.ReciveMessage socketMessage
-    |> Sys.Proxy.Message.julia
+    |> Sys.Proxy.Discord.Message.julia
   }
 
   let private guildAdd (guild: SocketGuild): Task = task {
     JuliaMessages.JoinedGuild guild
-    |> Sys.Proxy.Message.julia
+    |> Sys.Proxy.Discord.Message.julia
   }
 
   let inline private initClient() =
@@ -49,21 +55,22 @@ module Discord =
 
       let inline private createGuildActors (guild: SocketGuild) =
 
-        let actorGuildName: string<actor_name> = % sprintf "%s%d" %Sys.Names.guildActor guild.Id
-        let actorGuildFunc = GuildActor.guildActor <| Sys.Proxy.create guild
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorGuildFunc, actorGuildName)
+        let actorGuildName:      string<actor_name> = % sprintf "%s%d" %Sys.Names.guildActor guild.Id
+        let actorGuildFunc      = GuildActor.guildActor      <| Sys.ProxyDiscord.Create guild <| guild
 
-        let actorBardName: string<actor_name> = % sprintf "%s%d" %Sys.Names.bard guild.Id
-        let actorBardFunc = Bard.bardActor <| Sys.Proxy.create guild
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorBardFunc, actorBardName)
+        let actorBardName:       string<actor_name> = % sprintf "%s%d" %Sys.Names.bard       guild.Id
+        let actorBardFunc       = Bard.bardActor             <| Sys.ProxyDiscord.Create guild <| guild
 
         let actorSongkeeperName: string<actor_name> = % sprintf "%s%d" %Sys.Names.songkeeper guild.Id
-        let actorSongkeeperFunc = Songkeeper.songkeeperActor <| Sys.Proxy.create guild
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorSongkeeperFunc, actorSongkeeperName)
+        let actorSongkeeperFunc = Songkeeper.songkeeperActor <| Sys.ProxyDiscord.Create guild <| guild
 
-        let actorYoutuberName: string<actor_name> = % sprintf "%s%d" %Sys.Names.youtuber guild.Id
-        let actorYoutuberFunc = Youtuber.youtuberActor <| Sys.Proxy.create guild
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorYoutuberFunc, actorYoutuberName)
+        let actorYoutuberName:   string<actor_name> = % sprintf "%s%d" %Sys.Names.youtuber   guild.Id
+        let actorYoutuberFunc   = Youtuber.youtuberActor     <| Sys.ProxyDiscord.Create guild <| guild
+
+        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorGuildFunc,      actorGuildName)
+        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorBardFunc,       actorBardName)
+        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorSongkeeperFunc, actorSongkeeperName)
+        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorYoutuberFunc,   actorYoutuberName)
 
       let inline reciveMessage (ctx: JuliaContext<_>) (sm: SocketMessage) cycle =
         printfn "Recive: A: %s M: %s" sm.Author.Username sm.Content
@@ -75,7 +82,7 @@ module Discord =
               Guild   = user.Guild 
               Message = sm }
           GuildActorMessages.GuildMessage context
-          |> Sys.Proxy.Message.guildActor context.Guild.Id
+          |> Sys.Proxy.Discord.Message.guildActor context.Guild.Id
         | _ -> ()
 
         cycle ctx.State

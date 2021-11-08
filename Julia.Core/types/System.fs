@@ -30,14 +30,6 @@ module ActorMessages =
     | GetActor
       of string<actor_name>
 
-[<AutoOpen>]
-module ActorContexts =
-
-  [<NoComparison>]
-  type SupervisorContext<'a> = {
-    Mailbox: Actor<'a>
-  }
-
 [<RequireQualifiedAccess>]
 type SystemErrros =
   | Bard of BardErrros

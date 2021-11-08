@@ -1,5 +1,7 @@
 ﻿namespace Julia.Discord
 
+open Discord.WebSocket
+
 open Akkling
 
 open Julia.Core
@@ -7,35 +9,44 @@ open Julia.Core
 
 module Songkeeper =
 
+  [<NoComparison>]
+  [<NoEquality>]
+  type private SongkeeperContext<'a> = {
+    State:   Song list
+    Mailbox: Actor<'a>
+    Guild: SocketGuild
+    Proxy:   Sys.ProxyDiscord
+  }
+
   module private LifecycleEvent =
 
-    let inline preStart (ctx: SongkeeperContext<_,_>) cycle =
+    let inline preStart (ctx: SongkeeperContext<_>) cycle =
       printfn "Actor songkeeper: %s start" ctx.Mailbox.Self.Path.Name
       cycle ctx.State
 
-    let inline postStop (ctx: SongkeeperContext<_,_>) cycle =
+    let inline postStop (ctx: SongkeeperContext<_>) cycle =
       printfn "PostStop"
       ignored()
 
-    let inline preRestart (ctx: SongkeeperContext<_,_>) cause message cycle =
+    let inline preRestart (ctx: SongkeeperContext<_>) cause message cycle =
       printfn "PreRestart cause: %A message: %A" cause message
       ignored()
 
-    let inline postRestart (ctx: SongkeeperContext<_,_>) cause cycle =
+    let inline postRestart (ctx: SongkeeperContext<_>) cause cycle =
       printfn "PostRestart cause: %A" cause
       ignored()
 
   module private SongkeeperMessages =
 
-    let inline clearSongs (ctx: SongkeeperContext<_,_>) cycle =
+    let inline clearSongs (ctx: SongkeeperContext<_>) cycle =
       cycle []
 
-    let inline addSong (ctx: SongkeeperContext<_,_>) song cycle =
+    let inline addSong (ctx: SongkeeperContext<_>) song cycle =
       cycle <| ctx.State @ song
 
   module private SongkeeperAsk =
 
-    let inline nextSong (ctx: SongkeeperContext<_,_>) cycle =
+    let inline nextSong (ctx: SongkeeperContext<_>) cycle =
       match ctx.State with
       | [] as voidSong ->
         ctx.Mailbox.Sender() <! voidSong
@@ -44,27 +55,27 @@ module Songkeeper =
         ctx.Mailbox.Sender() <! [ head ]
         cycle tail
 
-    let inline availbeSongsTitle (ctx: SongkeeperContext<_,_>) cycle =
+    let inline availbeSongsTitle (ctx: SongkeeperContext<_>) cycle =
       ctx.Mailbox.Sender() <! [ for song in ctx.State do song.Title ]
       cycle ctx.State
 
   module private GuildSystemMessage =
     
-    let inline restart (ctx: SongkeeperContext<_,_>) gmc cycle =
+    let inline restart (ctx: SongkeeperContext<_>) gmc cycle =
       failwith "restart"
 
   module private GuildSystemAsk =
     
-    let inline status (ctx: SongkeeperContext<_,_>) gmc cycle =
+    let inline status (ctx: SongkeeperContext<_>) gmc cycle =
       ctx.Mailbox.Sender() <! $"В хранилище содержится {ctx.State.Length} песен."
       cycle ctx.State
     
-  let songkeeperActor (guildProxy: GuildProxy<_>) (mb: Actor<_>) =
+  let songkeeperActor (guildProxy: Sys.ProxyDiscord) (guild: SocketGuild) (mb: Actor<_>) =
     let rec cycle songs = actor {
 
       let! (msg: obj) = mb.Receive()
 
-      let ctx: SongkeeperContext<_,_> = { State = songs; Mailbox = mb; Proxy = guildProxy }
+      let ctx: SongkeeperContext<_> = { State = songs; Mailbox = mb; Proxy = guildProxy; Guild = guild }
 
       match msg with
       | LifecycleEvent le -> 

@@ -17,6 +17,15 @@ open Julia.Core
 
 module Youtuber =
 
+  [<NoComparison>]
+  [<NoEquality>]
+  type private YoutuberContext<'a> = {
+    State:   YoutuberState
+    Mailbox: Actor<'a>
+    Guild: SocketGuild
+    Proxy:   Sys.ProxyDiscord
+  }
+
   let [<Literal>] private Parser = "Parser"
 
   module private RequestParser =
@@ -74,7 +83,7 @@ module Youtuber =
         let song = songFromYoutubeAsyncMem youtube url
         song.Wait()
         BardMessages.Play (matchSocketMessage ym, song.Result)
-        |> Sys.Proxy.Message.bard guild.Id
+        |> Sys.Proxy.Discord.Message.bard guild.Id
       }
 
       match ym with
@@ -126,47 +135,47 @@ module Youtuber =
 
   module private LifecycleEvent =
 
-    let inline preStart (ctx: YoutuberContext<_, _>) cycle =
-      printfn "Actor youtuber for guild %s start" ctx.Proxy.Guild.Name
+    let inline preStart (ctx: YoutuberContext<_>) cycle =
+      printfn "Actor youtuber for guild %s start" ctx.Guild.Name
       cycle ctx.State
 
-    let inline postStop (ctx: YoutuberContext<_, _>) cycle =
+    let inline postStop (ctx: YoutuberContext<_>) cycle =
       printfn "PostStop"
       ignored()
 
-    let inline preRestart (ctx: YoutuberContext<_, _>) cause message cycle =
+    let inline preRestart (ctx: YoutuberContext<_>) cause message cycle =
       printfn "PreRestart cause: %A message: %A" cause message
       ignored()
 
-    let inline postRestart (ctx: YoutuberContext<_, _>) cause cycle =
+    let inline postRestart (ctx: YoutuberContext<_>) cause cycle =
       printfn "PostRestart cause: %A" cause
       ignored()
 
   module private YoutuberMessages =
    
-    let inline videoAndSearchAndPlaylist (ctx: YoutuberContext<_, _>) (ym: YoutuberMessages) cycle =
+    let inline videoAndSearchAndPlaylist (ctx: YoutuberContext<_>) (ym: YoutuberMessages) cycle =
       ctx.State.RequestQueue.Add(ym)
       cycle ctx.State
 
   module private GuildSystemMessage =
     
-    let inline restart (ctx: YoutuberContext<_, _>) gmc cycle =
+    let inline restart (ctx: YoutuberContext<_>) gmc cycle =
       ctx.State.CancelToken.Cancel()
       ctx.State.RequestQueue.Clear()
       failwith "restart"
 
   module private GuildSystemAsk =
     
-    let inline status (ctx: YoutuberContext<_, _>) gmc cycle =
+    let inline status (ctx: YoutuberContext<_>) gmc cycle =
       ctx.Mailbox.Sender() <! $"В очереди на обработку находится {ctx.State.RequestQueue.Count} запросов."
       cycle ctx.State
 
-  let youtuberActor (guildProxy: GuildProxy<_>) (mb: Actor<_>) =
+  let youtuberActor (guildProxy: Sys.ProxyDiscord) (guild: SocketGuild) (mb: Actor<_>) =
     let rec cycle youtuberState = actor {
 
       let! (msg: obj) = mb.Receive()
 
-      let (ctx: YoutuberContext<_, _>) = { State = youtuberState; Mailbox = mb; Proxy = guildProxy }
+      let (ctx: YoutuberContext<_>) = { State = youtuberState; Mailbox = mb; Proxy = guildProxy; Guild = guild }
 
       match msg with
       | LifecycleEvent le -> 
@@ -189,4 +198,4 @@ module Youtuber =
 
     }
 
-    cycle <| RequestParser.initYoutuberState guildProxy.Guild
+    cycle <| RequestParser.initYoutuberState guild
