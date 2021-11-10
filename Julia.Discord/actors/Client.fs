@@ -29,14 +29,14 @@ module Discord =
     |> Sys.Proxy.Discord.Message.julia
   }
 
-  let private readyAsync(): Task = task { return printfn "Connected" }
+  let private readyAsync(): Task = task { return printfn "Discord: Successfull connected" }
 
   let private messageReceivedAsync socketMessage: Task = task {
     JuliaMessages.ReciveMessage socketMessage
     |> Sys.Proxy.Discord.Message.julia
   }
 
-  let private guildAdd (guild: SocketGuild): Task = task {
+  let private guildAdd guild: Task = task {
     JuliaMessages.JoinedGuild guild
     |> Sys.Proxy.Discord.Message.julia
   }
@@ -55,25 +55,31 @@ module Discord =
 
       let inline private createGuildActors (guild: SocketGuild) =
 
-        let actorGuildName:      string<actor_name> = % sprintf "%s%d" %Sys.Names.guildActor guild.Id
-        let actorGuildFunc      = GuildActor.guildActor      <| Sys.ProxyDiscord.Create guild <| guild
+        printfn "Init spawn actors fot guild %s" guild.Name
 
-        let actorBardName:       string<actor_name> = % sprintf "%s%d" %Sys.Names.bard       guild.Id
-        let actorBardFunc       = Bard.bardActor             <| Sys.ProxyDiscord.Create guild <| guild
+        let actorGuildName:       ActorName = % sprintf "%s%d"   %Sys.Names.Discord.guildActor guild.Id
+        let actorGuildFunc        = GuildActor.guildActor        <| Sys.ProxyDiscord.Create guild <| guild
 
-        let actorSongkeeperName: string<actor_name> = % sprintf "%s%d" %Sys.Names.songkeeper guild.Id
-        let actorSongkeeperFunc = Songkeeper.songkeeperActor <| Sys.ProxyDiscord.Create guild <| guild
+        let actorGuildWriterName: ActorName = % sprintf "%s%d"   %Sys.Names.Discord.guildWriter guild.Id
+        let actorGuildWriterFunc  = GuildWriter.guildWriterActor <| Sys.ProxyDiscord.Create guild <| guild
 
-        let actorYoutuberName:   string<actor_name> = % sprintf "%s%d" %Sys.Names.youtuber   guild.Id
-        let actorYoutuberFunc   = Youtuber.youtuberActor     <| Sys.ProxyDiscord.Create guild <| guild
+        let actorBardName:        ActorName = % sprintf "%s%d"   %Sys.Names.Discord.bard       guild.Id
+        let actorBardFunc         = Bard.bardActor               <| Sys.ProxyDiscord.Create guild <| guild
+                                                                 
+        let actorSongkeeperName:  ActorName = % sprintf "%s%d"   %Sys.Names.Discord.songkeeper guild.Id
+        let actorSongkeeperFunc   = Songkeeper.songkeeperActor   <| Sys.ProxyDiscord.Create guild <| guild
+                                                                 
+        let actorYoutuberName:    ActorName = % sprintf "%s%d"   %Sys.Names.Discord.youtuber   guild.Id
+        let actorYoutuberFunc     = Youtuber.youtuberActor       <| Sys.ProxyDiscord.Create guild <| guild
 
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorGuildFunc,      actorGuildName)
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorBardFunc,       actorBardName)
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorSongkeeperFunc, actorSongkeeperName)
-        Sys.supervisor <! SupervisorMessages.CreateSystemActor(actorYoutuberFunc,   actorYoutuberName)
+        Sys.juliavisor <! SupervisorMessages.CreateSystemActor(actorGuildFunc,       actorGuildName)
+        Sys.juliavisor <! SupervisorMessages.CreateSystemActor(actorBardFunc,        actorBardName)
+        Sys.juliavisor <! SupervisorMessages.CreateSystemActor(actorSongkeeperFunc,  actorSongkeeperName)
+        Sys.juliavisor <! SupervisorMessages.CreateSystemActor(actorYoutuberFunc,    actorYoutuberName)
+        Sys.juliavisor <! SupervisorMessages.CreateSystemActor(actorGuildWriterFunc, actorGuildWriterName)
 
-      let inline reciveMessage (ctx: JuliaContext<_>) (sm: SocketMessage) cycle =
-        printfn "Recive: A: %s M: %s" sm.Author.Username sm.Content
+      let inline reciveMessage ctx (sm: SocketMessage) cycle =
+        printfn $"DISCORD: {sm.Channel}:\t {sm.Author.Username}:\t {sm.Content}"
 
         match sm.Author with
         | :? SocketGuildUser as user ->
@@ -87,50 +93,47 @@ module Discord =
 
         cycle ctx.State
 
-      let inline log (ctx: JuliaContext<_>) logMessage cycle =
-        printfn "%s" <| logMessage.ToString()
+      let inline log ctx logMessage cycle =
+        printfn "DLOG: %s" <| logMessage.ToString()
         cycle ctx.State
 
-      let inline initFinish (ctx: JuliaContext<_>) cycle =
-        while ctx.State = null || ctx.State.Guilds.Count < 1 do
+      let inline initFinish ctx cycle =
+        while isNull ctx.State || ctx.State.Guilds.Count < 1 do
           Thread.Sleep(1000)
         for guild in ctx.State.Guilds do
-          printfn "Guild %s spawn actors" guild.Name
           createGuildActors guild
         cycle ctx.State
 
-      let inline joinedGuild (ctx: JuliaContext<_>) guild cycle =
+      let inline joinedGuild ctx guild cycle =
+        printfn "joined guild"
         createGuildActors guild
         cycle ctx.State
 
     module private LifecycleEvent =
 
-      let inline preStart (ctx: JuliaContext<_>) cycle =
-        printfn "PreStart discord client"
+      let inline preStart ctx cycle =
+        printfn "Start Julia discord client"
         let d = initClient()
         d.LoginAsync(TokenType.Bot, token).Wait()
         d.StartAsync().Wait()
         ctx.Mailbox.Self <! box JuliaMessages.InitFinish
         cycle d
 
-      let inline postStop (ctx: JuliaContext<_>) cycle =
-        printfn "PostStop"
-        ignored()
+      let inline postStop ctx cycle =
+        unhandled()
 
-      let inline preRestart (ctx: JuliaContext<_>) cause message cycle =
-        printfn "PreRestart cause: %A message: %A" cause message
-        ignored()
+      let inline preRestart ctx cause message cycle =
+        unhandled()
 
-      let inline postRestart (ctx: JuliaContext<_>) cause cycle =
-        printfn "PostRestart cause: %A" cause
-        ignored()
+      let inline postRestart ctx cause cycle =
+        unhandled()
 
     let juliaActor (mb: Actor<_>) =
-      let rec cycle (dclient: DiscordSocketClient) = actor {
+      let rec cycle dclient = actor {
 
         let! (msg: obj) = mb.Receive()
 
-        let ctx: JuliaContext<_> = { State = dclient; Mailbox = mb }
+        let ctx = { State = dclient; Mailbox = mb }
 
         match msg with
         | LifecycleEvent le -> 
@@ -145,9 +148,9 @@ module Discord =
           | JuliaMessages.Log l            -> return! JuliaMessages.log           ctx l cycle
           | JuliaMessages.InitFinish       -> return! JuliaMessages.initFinish    ctx cycle
           | JuliaMessages.JoinedGuild g    -> return! JuliaMessages.joinedGuild   ctx g cycle
-        | _ as some ->
+        | some ->
           printfn "Ignored MSG: %A" some
-          return! Ignore
+          return! Unhandled
       }
 
       cycle null

@@ -23,6 +23,7 @@ module Bard =
     Mailbox: Actor<'a>
     Guild:   SocketGuild
     Proxy:   Sys.ProxyDiscord
+    WriteProxy: GuildWriter.WriteProxy
   }
 
   let [<Literal>] private Play    = "Play"
@@ -102,10 +103,10 @@ module Bard =
 
     Process.Start(info)
 
-  let private validateChannel (gmc: GuildMessageContext) =
+  let private validateChannel gmc =
     match gmc.Message.Author with
     | :? SocketGuildUser as user ->
-      if user.VoiceChannel <> null then
+      if not (isNull user.VoiceChannel) then
         Ok user
       else
         Error BardErrros.UserNoInVoiceChannel
@@ -113,7 +114,7 @@ module Bard =
     
   let private connectChannel
     (botGuild: SocketGuild) (ctx: BardContext<_>)
-    (gmc: GuildMessageContext) (user: SocketGuildUser)=
+    (gmc: GuildMessageContext) (user: SocketGuildUser) =
     
     let connect() =
       Ok <| user.VoiceChannel.ConnectAsync().Result
@@ -132,9 +133,9 @@ module Bard =
         | _ -> connect()
       with ex ->
         let err = sprintf "Failed get AudioClient: %s try counts: %d" ex.Message tryCount
-        Utils.sendEmbed gmc <| Utils.answerEmbed "Connect" err
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %"Connect" %err)
         if tryCount <= 3 then
-          Utils.sendEmbed gmc <| Utils.answerEmbed "Connect" "Try again..."
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %"Connect" %"Try again...")
           recConnect (tryCount + 1)
         else
           Error BardErrros.CantGetAudioClientWhenTryConnect
@@ -175,9 +176,9 @@ module Bard =
     |> ctx.Proxy.Message.Bard
   }
 
-  let private startPlaySong song (ctx: BardContext<_>) (gmc: GuildMessageContext) =
+  let private startPlaySong song ctx gmc =
 
-    let prepareToTranslate (client: IAudioClient) =
+    let prepareToTranslate client =
 
         let ffmpeg = createFFmpegProcess()
 
@@ -185,8 +186,11 @@ module Bard =
 
         let ytdl = createYoutubeDLProcess song.Url
 
-        Utils.sendEmbed gmc
-        <| Utils.answerWithThumbnailEmbed Play $"Начинается воспроизведение:\n{song.Title}" %song.Thumbnail
+        ctx.WriteProxy.WritePlay(
+          gmc,
+          Utils.answerWithThumbnailEmbed %Play %($"Начинается воспроизведение:\n{song.Title}") %song.Thumbnail, 
+          song
+         )
 
         let bp =
           let s = { FFmpeg = ffmpeg; YoutubeDL = ytdl; Song = song }
@@ -204,31 +208,28 @@ module Bard =
     |> function
     | Ok state -> state
     | Error err ->
-      Utils.sendEmbed gmc <| Utils.answerEmbed Play $"Ошибка воспроизведения: {err.ToString()}"
+      ctx.WriteProxy.WritePlay(gmc, Utils.answerEmbed %Play %($"Ошибка воспроизведения: {err.ToString()}"), song)
       ctx.State
 
 
   module private LifecycleEvent =
 
-    let inline preStart (ctx: BardContext<_>) cycle =
-      printfn "Actor bard for guild %s start" ctx.Guild.Name
+    let inline preStart ctx cycle =
+      printfn "Guild %s actor Bard start" ctx.Guild.Name
       cycle ctx.State
 
-    let inline postStop (ctx: BardContext<_>) cycle =
-      printfn "PostStop"
-      ignored()
+    let inline postStop ctx cycle =
+      unhandled()
 
-    let inline preRestart (ctx: BardContext<_>) cause message cycle =
-      printfn "PreRestart cause: %A message: %A" cause message
-      ignored()
+    let inline preRestart ctx cause message cycle =
+      unhandled()
 
-    let inline postRestart (ctx: BardContext<_>) cause cycle =
-      printfn "PostRestart cause: %A" cause
-      ignored()
+    let inline postRestart ctx cause cycle =
+      unhandled()
 
   module private BardMessages =
     
-    let inline parseRequest (ctx: BardContext<_>) (gmc: GuildMessageContext) cycle = 
+    let inline parseRequest ctx gmc cycle = 
     
       async {
 
@@ -250,12 +251,12 @@ module Bard =
               let allExceptFirst =
                 msgArray
                 |> Seq.mapi (fun i s -> if i = 0 then "" else s)
-                |> Seq.reduce (fun acc elem -> acc + elem)
+                |> Seq.reduce (+)
               Message allExceptFirst
 
         match gmc with
         | NoArg        ->
-          Utils.sendEmbed gmc <| Utils.answerEmbed Play "Недостаточно аргументов, вы забыли ссылку?"
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Play %"Недостаточно аргументов, вы забыли ссылку?")
         | Playlist msg ->
           YoutuberMessages.Playlist(%msg, gmc)
           |> ctx.Proxy.Message.Youtuber
@@ -268,10 +269,10 @@ module Bard =
 
       cycle ctx.State
 
-    let inline join (ctx: BardContext<_>) gmc cycle =
+    let inline join ctx gmc cycle =
       match ctx.State.PlayerState with
       | PlayerState.Loop _ | PlayerState.Playing _ ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Join "Не могу сменить канал во время воспроизведения"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Join %"Не могу сменить канал во время воспроизведения")
         cycle ctx.State
       | PlayerState.StopPlaying _ | PlayerState.WaitSong ->
         validateChannel gmc
@@ -279,29 +280,33 @@ module Bard =
         |> function
         | Ok client ->
           let s = { ctx.State with AudioClient = Some client }
-          Utils.sendEmbed gmc <| Utils.answerEmbed Join "Запрыгнула в канал"
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Join %"Запрыгнула в канал")
           cycle s
         | Error err ->
-          Utils.sendEmbed gmc <| Utils.answerEmbed Join $"Не удалось зайти в канал {err.ToString()}"
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Join %($"Не удалось зайти в канал {err.ToString()}"))
           cycle ctx.State
 
-    let inline leave (ctx: BardContext<_>) gmc cycle =
+    let inline leave ctx gmc cycle =
       match ctx.State.PlayerState with
       | PlayerState.Playing _ | PlayerState.Loop _ ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Leave "Сейчас идет воспроизведение, я не могу покинуть канал"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Leave %"Сейчас идет воспроизведение, я не могу покинуть канал")
       | PlayerState.StopPlaying _ | PlayerState.WaitSong ->
         match ctx.Guild.CurrentUser.VoiceChannel with
         | null ->
-          Utils.sendEmbed gmc <| Utils.answerEmbed Leave "Я и так не в голосовом канале"
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Leave %"Я и так не в голосовом канале")
         | channel ->
           channel.DisconnectAsync() |> ignore
-          Utils.sendEmbed gmc <| Utils.answerEmbed Leave "Покинула голосовой канал"
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Leave %"Покинула голосовой канал")
       cycle ctx.State
 
-    let inline play (ctx: BardContext<_>) gmc (song: Song) cycle =
+    let inline play ctx gmc (song: Song) cycle =
       
       let inline addToQuery songToQuery =
-        Utils.sendEmbed gmc <| Utils.answerWithThumbnailEmbed Play $"Добавлено в очередь:\n{songToQuery.Title}" songToQuery.Thumbnail
+        ctx.WriteProxy.WritePlay(
+          gmc,
+          Utils.answerWithThumbnailEmbed %Play %($"Добавлено в очередь:\n{songToQuery.Title}") songToQuery.Thumbnail,
+          songToQuery
+        )
         SongkeeperMessages.AddSong songToQuery
         |> ctx.Proxy.Message.Songkeeper
 
@@ -316,44 +321,50 @@ module Bard =
         addToQuery song
         cycle newState
 
-    let inline resume (ctx: BardContext<_>) gmc cycle =
+    let inline resume ctx gmc cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing _ | PlayerState.Loop _ ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Resume "Воспроизведение уже идет"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Resume %"Воспроизведение уже идет")
         cycle ctx.State
       | PlayerState.WaitSong ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Resume "Нет остановленных песен"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Resume %"Нет остановленных песен")
         cycle ctx.State
       | PlayerState.StopPlaying s ->
-        Utils.sendEmbed gmc <| Utils.answerWithThumbnailEmbed Resume $"Возобновляется воспроизведение остановленной песни:\n{s.Title}" s.Thumbnail
+        ctx.WriteProxy.WriteEmbedMessage(
+          gmc,
+          Utils.answerWithThumbnailEmbed %Resume %($"Возобновляется воспроизведение остановленной песни:\n{s.Title}") s.Thumbnail
+        )
         let newState = startPlaySong s ctx gmc
         cycle newState
 
-    let inline skip (ctx: BardContext<_>) gmc cycle =
+    let inline skip ctx gmc cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing bp ->
         bp.FFmpeg.Kill()
         bp.YoutubeDL.Kill()
-        Utils.sendEmbed gmc <| Utils.answerEmbed Skip $"Скипнута песня:\n{bp.Song.Title}"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Skip %($"Скипнута песня:\n{bp.Song.Title}"))
       | PlayerState.Loop bp ->
         bp.FFmpeg.Kill()
         bp.YoutubeDL.Kill()
-        Utils.sendEmbed gmc <| Utils.answerEmbed Skip $"Скипнута песня, но ее воспроизведенеи продолжится потому что она зациклена:\n{bp.Song.Title}"
+        ctx.WriteProxy.WriteEmbedMessage(
+          gmc,
+          Utils.answerEmbed %Skip %($"Скипнута песня, но ее воспроизведенеи продолжится потому что она зациклена:\n{bp.Song.Title}")
+        )
       | PlayerState.StopPlaying _ | PlayerState.WaitSong ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Skip "Сейчас ничего не играет"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Skip %"Сейчас ничего не играет")
 
       cycle ctx.State
 
-    let inline queue (ctx: BardContext<_>) gmc cycle =
+    let inline queue ctx gmc cycle =
 
       let songsTitle: string list =
         ctx.Proxy.Ask.Songkeeper 
         <!? SongkeeperAsk.AvaibleSongsTitle
 
       if songsTitle.Length = 0 then
-        Utils.sendEmbed gmc <| Utils.answerEmbed Queue "Очередь пуста"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Queue %"Очередь пуста")
       else
         let mutable index = 1
         songsTitle
@@ -365,71 +376,80 @@ module Bard =
             index <- index + 1
             query <- query + str
           Thread.Sleep(1000)
-          Utils.sendEmbed gmc <| Utils.answerEmbed Queue query)
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Queue %query))
 
       cycle ctx.State
 
-    let inline stop (ctx: BardContext<_>) gmc cycle =
+    let inline stop ctx gmc cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing bp ->
         bp.FFmpeg.Kill()
         bp.YoutubeDL.Kill()
         ctx.State.AudioClient.Value.Dispose()
-        Utils.sendEmbed gmc <| Utils.answerEmbed Stop $"Песня остановлена:\n{bp.Song.Title}"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Stop %($"Песня остановлена:\n{bp.Song.Title}"))
         cycle { ctx.State with PlayerState = PlayerState.StopPlaying bp.Song; AudioClient = None }
       | PlayerState.Loop bp ->
         bp.FFmpeg.Kill()
         bp.YoutubeDL.Kill()
         ctx.State.AudioClient.Value.Dispose()
-        Utils.sendEmbed gmc <| Utils.answerEmbed Stop $"Песня остановлена:\n{bp.Song.Title}"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Stop %($"Песня остановлена:\n{bp.Song.Title}"))
         cycle { ctx.State with PlayerState = PlayerState.StopPlaying bp.Song; AudioClient = None }
       | PlayerState.StopPlaying song ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Stop $"Воспроизведение уже остановлено, песня:\n{song.Title}"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Stop %($"Воспроизведение уже остановлено, песня:\n{song.Title}"))
         cycle ctx.State
       | PlayerState.WaitSong ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Stop "Ожидаются песни для воспроизведения"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Stop %"Ожидаются песни для воспроизведения")
         cycle ctx.State
 
-    let inline loop (ctx: BardContext<_>) gmc cycle =
+    let inline loop ctx gmc cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing bp ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Loop $"Песня зациклена:\n{bp.Song.Title}"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Loop %($"Песня зациклена:\n{bp.Song.Title}"))
         cycle { ctx.State with PlayerState = PlayerState.Loop bp }
       | PlayerState.Loop bp ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Loop "Песня уже зациклена"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Loop %"Песня уже зациклена")
         cycle ctx.State
       | PlayerState.StopPlaying song ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Loop $"Воспроизведение остановлено, песня:\n{song.Title}"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Loop %($"Воспроизведение остановлено, песня:\n{song.Title}"))
         cycle ctx.State
       | PlayerState.WaitSong ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Loop "Ожидаются песни для воспроизведения"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Loop %"Ожидаются песни для воспроизведения")
         cycle ctx.State
 
-    let inline clear (ctx: BardContext<_>) gmc cycle =
+    let inline clear ctx gmc cycle =
 
       ctx.Proxy.Message.Songkeeper SongkeeperMessages.ClearSongs
 
-      Utils.sendEmbed gmc <| Utils.answerEmbed Clear "Очередь очищена"
+      ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Clear %"Очередь очищена")
 
       cycle ctx.State
 
-    let inline nowPlay (ctx: BardContext<_>) (gmc: GuildMessageContext) cycle =
+    let inline nowPlay ctx (gmc: GuildMessageContext) cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing bp ->
-        Utils.sendEmbed gmc <| Utils.answerWithThumbnailEmbed Nowplay $"Сейчас играет:\n{bp.Song.Title}" bp.Song.Thumbnail
+        ctx.WriteProxy.WriteEmbedMessage(
+          gmc,
+          Utils.answerWithThumbnailEmbed %Nowplay %($"Сейчас играет:\n{bp.Song.Title}") bp.Song.Thumbnail
+        )
       | PlayerState.Loop bp ->
-        Utils.sendEmbed gmc <| Utils.answerWithThumbnailEmbed Nowplay $"Сейчас играет и зациклена:\n{bp.Song.Title}" bp.Song.Thumbnail
+        ctx.WriteProxy.WriteEmbedMessage(
+          gmc,
+          Utils.answerWithThumbnailEmbed %Nowplay %($"Сейчас играет и зациклена:\n{bp.Song.Title}") bp.Song.Thumbnail
+        )
       | PlayerState.StopPlaying song ->
-        Utils.sendEmbed gmc <| Utils.answerWithThumbnailEmbed Nowplay $"Остановленная песня:\n{song.Title}" song.Thumbnail
+        ctx.WriteProxy.WriteEmbedMessage(
+          gmc,
+          Utils.answerWithThumbnailEmbed %Nowplay %($"Остановленная песня:\n{song.Title}") song.Thumbnail
+        )
       | PlayerState.WaitSong ->
-        Utils.sendEmbed gmc <| Utils.answerEmbed Nowplay "Нет текущих песен"
+        ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Nowplay %"Нет текущих песен")
 
       cycle ctx.State
 
-    let inline final (ctx: BardContext<_>) gmc cycle =
+    let inline final ctx gmc cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing bp ->
@@ -441,7 +461,7 @@ module Bard =
         | head::_ ->
             cycle <| startPlaySong head ctx gmc
         | _ ->
-          Utils.sendEmbed gmc <| Utils.answerEmbed Play "Очередь закончилась"
+          ctx.WriteProxy.WriteEmbedMessage(gmc, Utils.answerEmbed %Play %"Очередь закончилась")
           ctx.State.AudioClient.Value.Dispose()
           cycle { ctx.State with PlayerState = PlayerState.WaitSong; AudioClient = None }
       | PlayerState.Loop bp ->
@@ -451,9 +471,9 @@ module Bard =
       | PlayerState.StopPlaying _ | PlayerState.WaitSong ->
         cycle ctx.State
 
-  module private GuildSystemMessage =
+  module private GuildSystemMessages =
 
-    let inline restart (ctx: BardContext<_>) gmc cycle =
+    let inline restart ctx gmc cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing bp | PlayerState.Loop bp ->
@@ -467,7 +487,7 @@ module Bard =
 
   module private GuildSystemAsk =
 
-    let inline status (ctx: BardContext<_>) sm cycle =
+    let inline status ctx sm cycle =
 
       match ctx.State.PlayerState with
       | PlayerState.Playing bp | PlayerState.Loop bp ->
@@ -481,12 +501,16 @@ module Bard =
         
 
 
-  let bardActor (guildProxy: Sys.ProxyDiscord) (guild: SocketGuild) (mb: Actor<_>) =
+  let bardActor guildProxy (guild: SocketGuild) (mb: Actor<_>) =
+
+    let writeProxy = GuildWriter.WriteProxy.Create guild
+
     let rec cycle bardState = actor {
 
       let! (msg: obj) = mb.Receive()
 
-      let (ctx: BardContext<_>) = { State = bardState; Mailbox = mb; Proxy = guildProxy; Guild = guild }
+      let ctx =
+        { State = bardState; Mailbox = mb; Proxy = guildProxy; Guild = guild; WriteProxy = writeProxy }
       match msg with
       | LifecycleEvent le -> 
         match le with
@@ -508,13 +532,15 @@ module Bard =
         | BardMessages.Clear        gmc -> return! BardMessages.clear        ctx gmc cycle
         | BardMessages.NowPlay      gmc -> return! BardMessages.nowPlay      ctx gmc cycle
         | BardMessages.Final        gmc -> return! BardMessages.final        ctx gmc cycle
-      | :? GuildSystemMessage as gsm ->
+      | :? GuildSystemMessages as gsm ->
         match gsm with
-        | GuildSystemMessage.Restart gmc -> return! GuildSystemMessage.restart ctx gmc cycle
+        | GuildSystemMessages.Restart gmc -> return! GuildSystemMessages.restart ctx gmc cycle
       | :? GuildSystemAsk as gsa ->
         match gsa with
         | GuildSystemAsk.Status gmc -> return! GuildSystemAsk.status ctx gmc cycle
-      | _ -> return! Ignore
+      | some ->
+        printfn "Ignored MSG: %A" some
+        return! Unhandled
 
     }
 

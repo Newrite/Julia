@@ -3,6 +3,6 @@ open Julia.Discord
 
 open Akkling
 
-Sys.supervisor <! SupervisorMessages.CreateSystemActor(Discord.Julia.juliaActor, Sys.Names.client)
+Sys.juliavisor <! SupervisorMessages.CreateSystemActor(Discord.Julia.juliaActor, Sys.Names.Discord.client)
 
 System.Console.ReadKey() |> ignore

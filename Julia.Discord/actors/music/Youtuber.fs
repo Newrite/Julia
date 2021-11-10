@@ -10,7 +10,6 @@ open Akkling
 open YoutubeExplode
 open YoutubeExplode.Common
 
-
 open FSharp.UMX
 
 open Julia.Core
@@ -24,13 +23,14 @@ module Youtuber =
     Mailbox: Actor<'a>
     Guild: SocketGuild
     Proxy:   Sys.ProxyDiscord
+    WriteProxy: GuildWriter.WriteProxy
   }
 
   let [<Literal>] private Parser = "Parser"
 
   module private RequestParser =
 
-    let private songFromYoutubeAsyncMem (youtube: YoutubeClient) (url: string<url>) = 
+    let private songFromYoutubeAsyncMem (youtube: YoutubeClient) url = 
     
       task {
 
@@ -47,7 +47,7 @@ module Youtuber =
     
       //Utils.memoize songFromYoutubeAsync
     
-    let private videoFromYoutubeSearchAsyncMem (youtube: YoutubeClient) (message: string<url>) =
+    let private videoFromYoutubeSearchAsyncMem (youtube: YoutubeClient) message =
     
       task {
 
@@ -59,7 +59,7 @@ module Youtuber =
       //Utils.memoize videoFromYoutubeSearchAsync
     
     
-    let private videosFromYoutubePlaylistAsyncMem (youtube: YoutubeClient) (url: string<url>) =
+    let private videosFromYoutubePlaylistAsyncMem (youtube: YoutubeClient) url =
     
       task {
 
@@ -71,7 +71,7 @@ module Youtuber =
     
       //Utils.memoize videosFromYoutubePlaylistAsync
 
-    let private parseRequest (youtube: YoutubeClient) (guild: SocketGuild) (ym: YoutuberMessages) = async {
+    let private parseRequest youtube (guild: SocketGuild) ym (wp: GuildWriter.WriteProxy) = async {
 
       let matchSocketMessage
         ( YoutuberMessages.Video (_, gmc)
@@ -79,7 +79,7 @@ module Youtuber =
         | YoutuberMessages.Playlist (_, gmc) ) =
           gmc
 
-      let sendSong (url: string<url>) = async {
+      let sendSong (url: URL) = async {
         let song = songFromYoutubeAsyncMem youtube url
         song.Wait()
         BardMessages.Play (matchSocketMessage ym, song.Result)
@@ -98,13 +98,13 @@ module Youtuber =
         let video = videoFromYoutubeSearchAsyncMem youtube req
         video.Wait()
         if video.Result.Count > 0 then
-          Utils.sendEmbed gmc <| Utils.answerEmbed Parser $"Найдено:\n{video.Result.[0].Title}"
+          wp.WriteParsed(gmc, Utils.answerEmbed %Parser %($"Найдено:\n{video.Result.[0].Title}"), %video.Result.[0].Url)
           do! sendSong %video.Result.[0].Url
         else
-          Utils.sendEmbed gmc <| Utils.answerEmbed Parser "Ничего не удалось найти"
+          wp.WriteEmbedMessage(gmc, Utils.answerEmbed %Parser %"Ничего не удалось найти")
     }
 
-    let initYoutuberState (guild: SocketGuild) =
+    let initYoutuberState guild wp =
 
       let cts = new CancellationTokenSource()
 
@@ -120,7 +120,7 @@ module Youtuber =
             | 0 ->
               do! Async.Sleep(1000)
             | _ ->
-              do! parseRequest youtube guild queueList.[0]
+              do! parseRequest youtube guild queueList.[0] wp
               queueList.RemoveAt(0)
           with exn ->
             printfn "Exception: %s" exn.Message
@@ -135,47 +135,48 @@ module Youtuber =
 
   module private LifecycleEvent =
 
-    let inline preStart (ctx: YoutuberContext<_>) cycle =
-      printfn "Actor youtuber for guild %s start" ctx.Guild.Name
+    let inline preStart ctx cycle =
+      printfn "Guild %s actor Youtuber start" ctx.Guild.Name
       cycle ctx.State
 
-    let inline postStop (ctx: YoutuberContext<_>) cycle =
-      printfn "PostStop"
-      ignored()
+    let inline postStop ctx cycle =
+      unhandled()
 
-    let inline preRestart (ctx: YoutuberContext<_>) cause message cycle =
-      printfn "PreRestart cause: %A message: %A" cause message
-      ignored()
+    let inline preRestart ctx cause message cycle =
+      unhandled()
 
-    let inline postRestart (ctx: YoutuberContext<_>) cause cycle =
-      printfn "PostRestart cause: %A" cause
-      ignored()
+    let inline postRestart ctx cause cycle =
+      unhandled()
 
   module private YoutuberMessages =
    
-    let inline videoAndSearchAndPlaylist (ctx: YoutuberContext<_>) (ym: YoutuberMessages) cycle =
+    let inline videoAndSearchAndPlaylist ctx ym cycle =
       ctx.State.RequestQueue.Add(ym)
       cycle ctx.State
 
-  module private GuildSystemMessage =
+  module private GuildSystemMessages =
     
-    let inline restart (ctx: YoutuberContext<_>) gmc cycle =
+    let inline restart ctx gmc cycle =
       ctx.State.CancelToken.Cancel()
       ctx.State.RequestQueue.Clear()
       failwith "restart"
 
   module private GuildSystemAsk =
     
-    let inline status (ctx: YoutuberContext<_>) gmc cycle =
+    let inline status ctx gmc cycle =
       ctx.Mailbox.Sender() <! $"В очереди на обработку находится {ctx.State.RequestQueue.Count} запросов."
       cycle ctx.State
 
-  let youtuberActor (guildProxy: Sys.ProxyDiscord) (guild: SocketGuild) (mb: Actor<_>) =
+  let youtuberActor guildProxy guild (mb: Actor<_>) =
+    
+    let writeProxy = GuildWriter.WriteProxy.Create guild
+
     let rec cycle youtuberState = actor {
 
       let! (msg: obj) = mb.Receive()
 
-      let (ctx: YoutuberContext<_>) = { State = youtuberState; Mailbox = mb; Proxy = guildProxy; Guild = guild }
+      let ctx =
+        { State = youtuberState; Mailbox = mb; Proxy = guildProxy; Guild = guild; WriteProxy = writeProxy }
 
       match msg with
       | LifecycleEvent le -> 
@@ -188,14 +189,16 @@ module Youtuber =
         match ym with
         | YoutuberMessages.Video _ | YoutuberMessages.Search _ | YoutuberMessages.Playlist _
           -> return! YoutuberMessages.videoAndSearchAndPlaylist ctx ym cycle
-      | :? GuildSystemMessage as gsm ->
+      | :? GuildSystemMessages as gsm ->
         match gsm with
-        | GuildSystemMessage.Restart gmc -> return! GuildSystemMessage.restart ctx gmc cycle
+        | GuildSystemMessages.Restart gmc -> return! GuildSystemMessages.restart ctx gmc cycle
       | :? GuildSystemAsk as gsa ->
         match gsa with
         | GuildSystemAsk.Status gmc -> return! GuildSystemAsk.status ctx gmc cycle
-      | _ -> return! Ignore
+      | some ->
+        printfn "Ignored MSG: %A" some
+        return! Unhandled
 
     }
 
-    cycle <| RequestParser.initYoutuberState guild
+    cycle <| RequestParser.initYoutuberState guild writeProxy

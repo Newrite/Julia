@@ -21,6 +21,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="actors\Writer.fs" />
     <Compile Include="actors\music\Songkeeper.fs" />
     <Compile Include="actors\music\Bard.fs" />
     <Compile Include="actors\music\Youtuber.fs" />

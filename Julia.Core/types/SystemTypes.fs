@@ -3,8 +3,6 @@
 open Akkling
 open Akka.Actor
 
-open FSharp.UMX
-
 [<AutoOpen>]
 module ActorMessages =
 
@@ -13,22 +11,22 @@ module ActorMessages =
   [<RequireQualifiedAccess>]
   type SupervisorMessages<'a> =
     | CreateActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name>
+      of (Actor<'a> -> Effect<'a>) * ActorName
   
     | CreateSystemActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name>
+      of (Actor<'a> -> Effect<'a>) * ActorName
   
     | CreateSupervisorActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name> * (unit -> SupervisorStrategy)
+      of (Actor<'a> -> Effect<'a>) * ActorName * (unit -> SupervisorStrategy)
   
     | CreateSystemSupervisorActor
-      of (Actor<'a> -> Effect<'a>) * string<actor_name> * (unit -> SupervisorStrategy)
+      of (Actor<'a> -> Effect<'a>) * ActorName * (unit -> SupervisorStrategy)
   
     | ActorMessage
-      of string<actor_name> * obj
+      of ActorName * obj
   
     | GetActor
-      of string<actor_name>
+      of ActorName
 
 [<RequireQualifiedAccess>]
 type SystemErrros =

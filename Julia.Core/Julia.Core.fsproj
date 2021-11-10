@@ -23,7 +23,7 @@
   <ItemGroup>
     <Compile Include="types\Core.fs" />
     <Compile Include="types\Discord.fs" />
-    <Compile Include="types\System.fs" />
+    <Compile Include="types\SystemTypes.fs" />
     <Compile Include="System.fs" />
   </ItemGroup>
 

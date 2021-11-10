@@ -14,6 +14,7 @@ open System.Diagnostics
 open System.Collections.Generic
 
 open FSharp.UMX
+open UMX
 
 [<NoComparison>]
 type GuildMessageContext = {
@@ -24,26 +25,11 @@ type GuildMessageContext = {
 
 [<NoComparison>]
 type Song = {
-  Url:       string<url>
-  Title:     string<title>
+  Url:       URL
+  Title:     SongTitle
   Time:      TimeSpan
-  Thumbnail: string<thumbnail>
+  Thumbnail: Thumbnail
 }
-
-[<NoComparison>]
-type BardPlaying = {
-  FFmpeg:      Process
-  YoutubeDL:   Process
-  Song:        Song
-}
-
-[<NoComparison>]
-[<RequireQualifiedAccess>]
-type PlayerState =
-  | WaitSong    
-  | Playing     of BardPlaying
-  | Loop        of BardPlaying
-  | StopPlaying of Song
 
 [<AutoOpen>]
 module ActorMessagesDiscord =
@@ -88,9 +74,9 @@ module ActorMessagesDiscord =
   [<NoComparison>]
   [<RequireQualifiedAccess>]
   type YoutuberMessages =
-    | Video    of string<url> * GuildMessageContext
-    | Search   of string<url> * GuildMessageContext
-    | Playlist of string<url> * GuildMessageContext
+    | Video    of URL * GuildMessageContext
+    | Search   of URL * GuildMessageContext
+    | Playlist of URL * GuildMessageContext
 
   [<NoComparison>]
   [<RequireQualifiedAccess>]
@@ -102,11 +88,47 @@ module ActorMessagesDiscord =
 
   [<NoComparison>]
   [<RequireQualifiedAccess>]
-  type GuildSystemMessage =
+  type GuildSystemMessages =
     | Restart of GuildMessageContext
+
+  [<NoComparison>]
+  [<RequireQualifiedAccess>]
+  type GuildWriterMessages =
+    | WriteMessage      of GuildMessageContext * MessageContent
+    | WritePlay         of GuildMessageContext * Embed * Song
+    | WriteParsed       of GuildMessageContext * Embed * URL
+    | WriteStatus       of GuildMessageContext * Embed
+    | WriteEmbedMessage of GuildMessageContext * Embed
 
 [<AutoOpen>]
 module ActorStatesDiscord =
+
+  [<NoComparison>]
+  type BardPlaying = {
+    FFmpeg:      Process
+    YoutubeDL:   Process
+    Song:        Song
+  }
+  
+  [<NoComparison>]
+  [<RequireQualifiedAccess>]
+  type PlayerState =
+    | WaitSong    
+    | Playing     of BardPlaying
+    | Loop        of BardPlaying
+    | StopPlaying of Song
+
+  [<NoComparison>]
+  type ParsingSongState = {
+    ParsingMessage: Rest.RestUserMessage
+    ParsingSongUrl: URL
+  }
+  //
+  //[<NoComparison>]
+  //[<RequireQualifiedAccess>]
+  //type StatusMessageState =
+  //  | UnhandledStatusMessage   of Rest.RestUserMessage
+  //  | Wait
   
   [<NoComparison>]
   type BardState = {
@@ -119,6 +141,12 @@ module ActorStatesDiscord =
     Youtube:      YoutubeClient
     CancelToken:  CancellationTokenSource
     RequestQueue: List<YoutuberMessages>
+  }
+
+  [<NoComparison>]
+  type GuildWriterState = {
+    ParsingSongState:   ParsingSongState list
+    StatusMessageState: Rest.RestUserMessage option
   }
 
 [<AutoOpen>]
